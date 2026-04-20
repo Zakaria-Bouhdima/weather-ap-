@@ -20,3 +20,6 @@ weather/*.pyc
 
 # OS
 .DS_Store
+
+# Diagram source
+architecture.py

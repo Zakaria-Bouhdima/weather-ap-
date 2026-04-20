@@ -39,32 +39,7 @@
 
 ## Architecture
 
-```
-                          ┌─────────────────────────────────────────┐
-                          │              Kubernetes Cluster          │
-                          │                                          │
-  User ──────────────────►│  Nginx (NodePort :30080)                 │
-                          │    │                                     │
-                          │    ├──► UI Service (Node.js :3000)       │
-                          │    │      │                              │
-                          │    │      ├──► Auth Service (Go :8080)   │
-                          │    │      │         │                    │
-                          │    │      │         └──► MySQL DB        │
-                          │    │      │                              │
-                          │    │      └──► Weather Service           │
-                          │    │               (Python :5000)        │
-                          │    │                    │                │
-                          │    │                    └──► RapidAPI    │
-                          │                                          │
-                          │  ┌─────────────────────────────────┐    │
-                          │  │  Monitoring (namespace)          │    │
-                          │  │  Prometheus ◄── ServiceMonitors  │    │
-                          │  │  Grafana    ◄── Dashboards       │    │
-                          │  │  Loki       ◄── Promtail         │    │
-                          │  │  Alertmanager──► Slack           │    │
-                          │  └─────────────────────────────────┘    │
-                          └─────────────────────────────────────────┘
-```
+![Architecture](architecture.png)
 
 ---
 
