@@ -1,6 +1,6 @@
 # WeatherApp
 
-> A production-grade microservices weather application deployed on Kubernetes with full observability, security hardening, and automated CI/CD.
+> A practice  microservices weather application deployed on Kubernetes with full observability, security hardening, and automated CI/CD.
 
 ![CI](https://github.com/Zakaria-Bouhdima/weather-ap-/actions/workflows/ci.yaml/badge.svg)
 ![License](https://img.shields.io/badge/license-ISC-blue.svg)
