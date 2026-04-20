@@ -1,0 +1,70 @@
+grafana:
+  enabled: true
+  adminPassword: "admin"   # change in production
+  service:
+    type: NodePort
+    nodePort: 30300
+  dashboardProviders:
+    dashboardproviders.yaml:
+      apiVersion: 1
+      providers:
+        - name: weatherapp
+          orgId: 1
+          folder: WeatherApp
+          type: file
+          disableDeletion: false
+          options:
+            path: /var/lib/grafana/dashboards/weatherapp
+  dashboardsConfigMaps:
+    weatherapp: "weatherapp-dashboard"
+  sidecar:
+    dashboards:
+      enabled: true
+      label: grafana_dashboard
+
+prometheus:
+  prometheusSpec:
+    retention: 7d
+    serviceMonitorSelectorNilUsesHelmValues: false
+    serviceMonitorSelector: {}
+    serviceMonitorNamespaceSelector: {}
+    ruleSelectorNilUsesHelmValues: false
+    ruleSelector: {}
+    ruleNamespaceSelector: {}
+    resources:
+      requests:
+        cpu: 200m
+        memory: 512Mi
+      limits:
+        cpu: 500m
+        memory: 1Gi
+
+alertmanager:
+  enabled: true
+  config:
+    global:
+      resolve_timeout: 5m
+    route:
+      group_by: ["alertname", "job"]
+      group_wait: 30s
+      group_interval: 5m
+      repeat_interval: 12h
+      receiver: "null"
+      routes:
+        - match:
+            severity: critical
+          receiver: slack
+    receivers:
+      - name: "null"
+      - name: slack
+        slack_configs:
+          - api_url: "$(SLACK_WEBHOOK_URL)"   # set as k8s secret
+            channel: "#alerts"
+            title: "[{{ .Status | toUpper }}] {{ .CommonLabels.alertname }}"
+            text: "{{ range .Alerts }}{{ .Annotations.summary }}\n{{ end }}"
+
+nodeExporter:
+  enabled: true
+
+kubeStateMetrics:
+  enabled: true

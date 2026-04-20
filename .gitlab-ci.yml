@@ -1,0 +1,129 @@
+# Required CI/CD variables (Settings → CI/CD → Variables):
+#   K8SCONFIG   — base64-encoded kubeconfig for the target cluster
+#   DB_PASSWORD — MySQL root password
+#   JWT_SECRET  — shared JWT signing secret
+#   API_KEY     — RapidAPI weather key
+
+# ── Component: builds the auth image with Buildah (no Docker daemon / no dind) ──
+include:
+  - component: $CI_SERVER_FQDN/to-be-continuous/docker/gitlab-ci-docker@8.3.0
+    inputs:
+      build-tool: buildah
+      file: auth/Dockerfile
+      snapshot-image: $CI_REGISTRY_IMAGE/weatherapp-auth:$CI_COMMIT_SHORT_SHA
+      release-image:  $CI_REGISTRY_IMAGE/weatherapp-auth:$CI_COMMIT_TAG
+
+stages:
+  - build       # component also uses this stage
+  - test        # component's lint/scan stage (hadolint)
+  - publish     # component's push stage
+  - deliver
+  - promote
+  - deploy
+
+variables:
+  REG: $CI_REGISTRY_IMAGE
+
+# ── Reusable Buildah template (no privileged runner needed) ──────────────────
+
+.buildah:
+  image: quay.io/buildah/stable
+  stage: build
+  before_script:
+    - buildah login -u "$CI_REGISTRY_USER" -p "$CI_REGISTRY_PASSWORD" "$CI_REGISTRY"
+  rules:
+    - if: '$CI_COMMIT_BRANCH == "main"'
+
+# ── Build remaining 3 services with Buildah ──────────────────────────────────
+
+build-ui:
+  extends: .buildah
+  script:
+    - buildah build -t $REG/weatherapp-ui:$CI_COMMIT_SHORT_SHA ./UI
+    - buildah push $REG/weatherapp-ui:$CI_COMMIT_SHORT_SHA
+
+build-weather:
+  extends: .buildah
+  script:
+    - buildah build -t $REG/weatherapp-weather:$CI_COMMIT_SHORT_SHA ./weather
+    - buildah push $REG/weatherapp-weather:$CI_COMMIT_SHORT_SHA
+
+build-nginx:
+  extends: .buildah
+  script:
+    - buildah build -t $REG/weatherapp-nginx:$CI_COMMIT_SHORT_SHA ./nginx
+    - buildah push $REG/weatherapp-nginx:$CI_COMMIT_SHORT_SHA
+
+# ── Deliver to staging ───────────────────────────────────────────────────────
+
+deliver:
+  stage: deliver
+  image:
+    name: alpine/helm:latest
+    entrypoint: [""]
+  before_script:
+    - mkdir -p /tmp/.kube
+    - echo "$K8SCONFIG" | base64 -d > /tmp/.kube/config
+    - export KUBECONFIG=/tmp/.kube/config
+    - helm repo add bitnami https://charts.bitnami.com/bitnami && helm repo update
+    - kubectl create namespace staging --dry-run=client -o yaml | kubectl apply -f -
+    - |
+      kubectl create secret generic weatherapp-secrets \
+        --from-literal=jwt-secret="$JWT_SECRET" \
+        --from-literal=apikey="$API_KEY" \
+        -n staging --dry-run=client -o yaml | kubectl apply -f -
+  script:
+    - cd weatherapp-auth && helm dependency build . && cd ..
+    - helm upgrade --install weatherapp-auth    ./weatherapp-auth    -n staging --set image.tag=$CI_COMMIT_SHORT_SHA --set mysql.auth.rootPassword="$DB_PASSWORD"
+    - helm upgrade --install weatherapp-weather ./weatherapp-weather -n staging --set image.tag=$CI_COMMIT_SHORT_SHA
+    - helm upgrade --install weatherapp-ui      ./weatherapp-ui      -n staging --set image.tag=$CI_COMMIT_SHORT_SHA
+    - helm upgrade --install weatherapp-nginx   ./weatherapp-nginx   -n staging --set image.tag=$CI_COMMIT_SHORT_SHA
+  rules:
+    - if: '$CI_COMMIT_BRANCH == "main"'
+
+# ── Promote: retag SHA → semver with skopeo (no image pull needed) ───────────
+
+promote:
+  stage: promote
+  image:
+    name: quay.io/skopeo/stable
+    entrypoint: [""]
+  script:
+    - TAGGED_HASH=$(git rev-list -n 1 $CI_COMMIT_TAG)
+    - |
+      for svc in auth ui weather nginx; do
+        skopeo copy \
+          docker://$REG/weatherapp-$svc:${TAGGED_HASH:0:8} \
+          docker://$REG/weatherapp-$svc:$CI_COMMIT_TAG \
+          --src-creds  "$CI_REGISTRY_USER:$CI_REGISTRY_PASSWORD" \
+          --dest-creds "$CI_REGISTRY_USER:$CI_REGISTRY_PASSWORD"
+      done
+  rules:
+    - if: '$CI_COMMIT_TAG'
+
+# ── Deploy to production (manual gate) ───────────────────────────────────────
+
+deploy:
+  stage: deploy
+  image:
+    name: alpine/helm:latest
+    entrypoint: [""]
+  before_script:
+    - mkdir -p /tmp/.kube
+    - echo "$K8SCONFIG" | base64 -d > /tmp/.kube/config
+    - export KUBECONFIG=/tmp/.kube/config
+    - helm repo add bitnami https://charts.bitnami.com/bitnami && helm repo update
+    - |
+      kubectl create secret generic weatherapp-secrets \
+        --from-literal=jwt-secret="$JWT_SECRET" \
+        --from-literal=apikey="$API_KEY" \
+        --dry-run=client -o yaml | kubectl apply -f -
+  script:
+    - cd weatherapp-auth && helm dependency build . && cd ..
+    - helm upgrade --install weatherapp-auth    ./weatherapp-auth    --set image.tag=$CI_COMMIT_TAG --set mysql.auth.rootPassword="$DB_PASSWORD"
+    - helm upgrade --install weatherapp-weather ./weatherapp-weather --set image.tag=$CI_COMMIT_TAG
+    - helm upgrade --install weatherapp-ui      ./weatherapp-ui      --set image.tag=$CI_COMMIT_TAG
+    - helm upgrade --install weatherapp-nginx   ./weatherapp-nginx   --set image.tag=$CI_COMMIT_TAG
+  rules:
+    - if: '$CI_COMMIT_TAG'
+      when: manual

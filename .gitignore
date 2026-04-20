@@ -1,0 +1,22 @@
+# Secrets — never commit real values
+.env
+k8s/secrets.yaml
+
+# Go build artifacts
+auth/src/main/app
+auth/src/main/*.test
+
+# Node
+UI/node_modules/
+
+# Python
+weather/__pycache__/
+weather/*.pyc
+
+# Editor
+.idea/
+.vscode/
+*.swp
+
+# OS
+.DS_Store
