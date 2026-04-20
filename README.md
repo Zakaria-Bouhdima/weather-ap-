@@ -175,6 +175,47 @@ Grafana available at: **http://localhost:30300** — credentials: `admin` / `adm
 
 ---
 
+## Local Development — Arch Linux
+
+Install all required tools:
+
+```bash
+# Docker
+sudo pacman -S docker
+sudo systemctl enable --now docker
+sudo usermod -aG docker $USER   # log out and back in after this
+
+# kubectl & Helm & Make
+sudo pacman -S kubectl helm make
+
+# Kind (AUR)
+yay -S kind
+# or manually:
+# curl -Lo ./kind https://kind.sigs.k8s.io/dl/v0.22.0/kind-linux-amd64
+# chmod +x ./kind && sudo mv ./kind /usr/local/bin/kind
+```
+
+Get your API key:
+
+1. Go to [rapidapi.com](https://rapidapi.com) → search **WeatherAPI** → subscribe to the free plan → copy your key
+2. Generate a JWT secret: `openssl rand -hex 32`
+
+Then:
+
+```bash
+cp k8s/secrets.yaml.example k8s/secrets.yaml
+# fill in jwt-secret and apikey
+kubectl apply -f k8s/secrets.yaml
+
+make cluster-up
+make deploy
+make monitoring-install   # optional
+```
+
+App: **http://localhost:8080** — Grafana: **http://localhost:30300**
+
+---
+
 ## Secrets Setup
 
 ```bash
