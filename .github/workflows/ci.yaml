@@ -8,7 +8,7 @@ on:
 
 env:
   REGISTRY: ghcr.io
-  IMAGE_PREFIX: ghcr.io/${{ github.repository_owner | lower }}
+  IMAGE_PREFIX: ghcr.io/zakaria-bouhdima
 
 jobs:
   build-auth:
